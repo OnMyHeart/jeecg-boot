@@ -36,7 +36,6 @@ public class RestUtil {
         }
         return domain;
     }
-
     private static String getPath() {
         if (path == null) {
             path = SpringContextUtils.getApplicationContext().getEnvironment().getProperty("server.servlet.context-path");
@@ -57,8 +56,8 @@ public class RestUtil {
 
     static {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(3000);
-        requestFactory.setReadTimeout(3000);
+        requestFactory.setConnectTimeout(30000);
+        requestFactory.setReadTimeout(30000);
         RT = new RestTemplate(requestFactory);
         // 解决乱码问题
         RT.getMessageConverters().set(1, new StringHttpMessageConverter(StandardCharsets.UTF_8));

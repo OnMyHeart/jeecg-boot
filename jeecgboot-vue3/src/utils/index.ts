@@ -3,8 +3,8 @@ import type { App, Plugin } from 'vue';
 import type { FormSchema } from "@/components/Form";
 
 import { unref } from 'vue';
-import { isObject } from '/@/utils/is';
-
+import { isObject, isFunction, isString } from '/@/utils/is';
+import Big from 'big.js';
 // update-begin--author:sunjianlei---date:20220408---for: 【VUEN-656】配置外部网址打不开，原因是带了#号，需要替换一下
 export const URL_HASH_TAB = `__AGWE4H__HASH__TAG__PWHRG__`;
 // update-end--author:sunjianlei---date:20220408---for: 【VUEN-656】配置外部网址打不开，原因是带了#号，需要替换一下
@@ -41,7 +41,28 @@ export function deepMerge<T = any>(src: any = {}, target: any = {}): T {
   let key: string;
   for (key in target) {
     // update-begin--author:liaozhiyang---date:20240329---for：【QQYUN-7872】online表单label较长优化
-    src[key] = isObject(src[key]) && isObject(target[key]) ? deepMerge(src[key], target[key]) : (src[key] = target[key]);
+    if (isObject(src[key]) && isObject(target[key])) {
+      src[key] = deepMerge(src[key], target[key]);
+    } else {
+      // update-begin--author:liaozhiyang---date:20250318---for：【issues/7940】componentProps写成函数形式时，updateSchema写成对象时，参数没合并
+      try {
+        if (isFunction(src[key]) && isObject(src[key]()) && isObject(target[key])) {
+          // src[key]是函数且返回对象，且target[key]是对象
+          src[key] = deepMerge(src[key](), target[key]);
+        } else if (isObject(src[key]) && isFunction(target[key]) && isObject(target[key]())) {
+          // target[key]是函数且返回对象，且src[key]是对象
+          src[key] = deepMerge(src[key], target[key]());
+        } else if (isFunction(src[key]) && isFunction(target[key]) && isObject(src[key]()) && isObject(target[key]())) {
+          // src[key]是函数且返回对象，target[key]是函数且返回对象
+          src[key] = deepMerge(src[key](), target[key]());
+        } else {
+          src[key] = target[key];
+        }
+      } catch (error) {
+        src[key] = target[key];
+      }
+      // update-end--author:liaozhiyang---date:20250318---for：【issues/7940】componentProps写成函数形式时，updateSchema写成对象时，参数没合并
+    }
     // update-end--author:liaozhiyang---date:20240329---for：【QQYUN-7872】online表单label较长优化
   }
   return src;
@@ -123,7 +144,7 @@ export function cloneObject(obj) {
 
 export const withInstall = <T>(component: T, alias?: string) => {
   //console.log("---初始化---", component)
-  
+
   const comp = component as any;
   comp.install = (app: App) => {
     // @ts-ignore
@@ -254,7 +275,9 @@ export function numToUpper(value) {
       }
     };
     let lth = value.toString().length;
-    value *= 100;
+    // update-begin--author:liaozhiyang---date:20241202---for：【issues/7493】numToUpper方法返回解决错误
+    value = new Big(value).times(100);
+    // update-end--author:liaozhiyang---date:20241202---for：【issues/7493】numToUpper方法返回解决错误
     value += '';
     let length = value.length;
     if (lth <= 8) {
@@ -520,6 +543,10 @@ export function useConditionFilter() {
       data.view = 'number';
     }
     switch (data.view) {
+      case 'file':
+      case 'image':
+      case 'password':
+        return commonConditionOptions;
       case 'text':
       case 'textarea':
       case 'umeditor':
@@ -550,3 +577,58 @@ export function useConditionFilter() {
   };
   return { filterCondition };
 }
+// 获取url中的参数
+export const getUrlParams = (url) => {
+  const result = {
+    url: '',
+    params: {},
+  };
+  const list = url.split('?');
+  result.url = list[0];
+  const params = list[1];
+  if (params) {
+    const list = params.split('&');
+    list.forEach((ele) => {
+      const dic = ele.split('=');
+      const label = dic[0];
+      result.params[label] = dic[1];
+    });
+  }
+  return result;
+};
+
+/* 20250325
+ * liaozhiyang
+ * 分割url字符成数组
+ * 【issues/7990】图片参数中包含逗号会错误的识别成多张图
+ * */
+export const split = (str) => {
+  if (isString(str)) {
+    const text = str.trim();
+    if (text.startsWith('http')) {
+      const parts = str.split(',');
+      const urls: any = [];
+      let currentUrl = '';
+      for (const part of parts) {
+        if (part.startsWith('http://') || part.startsWith('https://')) {
+          // 如果遇到新的URL开头，保存当前URL并开始新的URL
+          if (currentUrl) {
+            urls.push(currentUrl);
+          }
+          currentUrl = part;
+        } else {
+          // 否则，是当前URL的一部分（如参数）
+          currentUrl += ',' + part;
+        }
+      }
+      // 添加最后一个URL
+      if (currentUrl) {
+        urls.push(currentUrl);
+      }
+      return urls;
+    } else {
+      return str.split(',');
+    }
+  }
+  return str;
+};
